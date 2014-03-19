@@ -25,51 +25,36 @@ require_once("OLS_class_lib/oci_class.php");
 
 class openNumberRoll extends webServiceServer {
 
-    function numberRoll($param) {
-        if (!$this->aaa->has_right("opennumberroll", 500))
+    public function numberRoll($param) {
+        if (!$this->aaa->has_right("opennumberroll", 500)) {
             $res->error->_value = "authentication_error";
+        } 
         else {
-            $valid_roll = $this->config->get_value("valid_number_roll","setup");
-            if (in_array($param->numberRollName->_value, $valid_roll)) {
-                $oci = new Oci($this->config->get_value("numberroll_credentials","setup"));
-                $oci->set_charset("UTF8");
-                try {
-                    $oci->connect();
+          $valid_rolls = $this->config->get_value("valid_number_roll","setup");
+          if (in_array($param->numberRollName->_value, $valid_rolls)) {
+// hack for creating test faust numbers until final scheme is found
+              if ('faust' == $param->numberRollName->_value) {
+                $ret->numberRollResponse->_value = self::create_test_faust();
+                return $ret;
+              }
+              for ($i = 1; ($i <= 2) && !is_object($oci); $i++) {
+                $oci = self::get_oci_connection($this->config->get_value("numberroll_credentials","setup"), $i);
+              }
+              if (!is_object($oci)) {
+                $res->error->_value = "error_reaching_database";
+              }
+              else {
+                if ($next_val = self::get_next_val($oci, $param->numberRollName->_value)) {
+                  $res->rollNumber->_value = self::create_sideeffect($next_val, $param->numberRollName->_value);
                 }
-                catch (ociException $e) {
-                    verbose::log(FATAL, "OpenNumberRoll:: OCI connect error: " . $oci->get_error_string());
-                    $res->error->_value = "error_reaching_database";
-                }
-                if ($res->error->_value) {
-                    unset($oci);
-                    unset($res->error->_value);
-                    $oci = new Oci($this->config->get_value("numberroll_credentials","setup"));
-                    $oci->set_charset("UTF8");
-                    try {
-                        $oci->connect();
-                    }
-                    catch (ociException $e) {
-                        verbose::log(FATAL, "OpenNumberRoll:: OCI connect error #2: " . $oci->get_error_string());
-                        $res->error->_value = "error_reaching_database";
-                    }
-                }
-                if (empty($res->error->_value))
-                    try {
-                        $oci->set_query("SELECT " . $param->numberRollName->_value . ".nextval FROM dual");
-                        $val = $oci->fetch_into_assoc();
-                        if (empty($val["NEXTVAL"])) {
-                            verbose::log(FATAL, "OpenNumberRoll:: Got no number?? error: " . $oci->get_error_string());
-                            $res->error->_value = "error_creatingnumber_roll";
-                        } else {
-                            verbose::log(TRACE, "OpenNumberRoll:: " . $param->numberRollName->_value . " returned number: " . $val["NEXTVAL"]);
-                            $res->rollNumber->_value = $val["NEXTVAL"];
-                        }
-                    } catch (ociException $e) {
-                        verbose::log(FATAL, "OpenNumberRoll:: OCI select error: " . $oci->get_error_string());
-                        $res->error->_value = "error_creatingnumber_roll";
-                    }
-            } else
-                $res->error->_value = "unknown_number_roll_name";
+                else {
+                  $res->error->_value = "error_creating_number_roll";
+                } 
+              }
+          }
+          else {
+            $res->error->_value = "unknown_number_roll_name";
+          }
         }
 
 
@@ -77,6 +62,71 @@ class openNumberRoll extends webServiceServer {
         $ret->numberRollResponse->_value = $res;
         return $ret;
 
+    }
+
+    private function create_test_faust() {
+      do {
+        $stem = strval(rand(1000000, 8999999));
+        $check = self::calculate_check($stem);
+      }
+      while (!is_int($check));
+      return $stem . strval($check);
+      
+    }
+
+    private function calculate_check($str) {
+      $vgt = '765432765432765432';
+      $str18 = sprintf('%018s', $str);
+      for ($i = strlen($str18); $i; $i--) {
+        $sum += intval($str18[$i - 1]) * intval($vgt[$i - 1]);
+      }
+      $chk = 11 - ($sum % 11);
+      return ($chk < 10 ? $chk : FALSE);
+    }
+
+    private function create_side_effect($number, $roll_name) {
+      switch ($roll_name) {
+        case 'faust':
+          return $number;
+          break;
+        default:
+          return $number;
+          break;
+      }
+    }
+
+    private function get_next_val($oci, $roll_name) {
+      $this->watch->start('nextval');
+      try {
+          $oci->set_query("SELECT " . $roll_name . ".nextval FROM dual");
+          $val = $oci->fetch_into_assoc();
+          if (empty($val["NEXTVAL"])) {
+              verbose::log(FATAL, "OpenNumberRoll:: Got no number?? error: " . $oci->get_error_string());
+              $ret = FALSE;
+          } else {
+              verbose::log(TRACE, "OpenNumberRoll:: " . $roll_name . " returned number: " . $val["NEXTVAL"]);
+              $ret = $val["NEXTVAL"];
+          }
+      } catch (ociException $e) {
+          verbose::log(FATAL, "OpenNumberRoll:: OCI select error: " . $oci->get_error_string());
+          $ret = FALSE;
+      }
+      $this->watch->stop('nextval');
+      return $ret;
+    }
+
+    private function get_oci_connection($credentials, $attempt) {
+      $oci = new Oci($credentials);
+      $oci->set_charset("UTF8");
+      $this->watch->start('connect-' . $attempt);
+      try {
+          $oci->connect();
+          return $oci;
+      }
+      catch (ociException $e) {
+          verbose::log(FATAL, 'OpenNumberRoll:: OCI connect error #' . $attempt . ': ' . $oci->get_error_string());
+      }
+      return FALSE;
     }
 
 }
