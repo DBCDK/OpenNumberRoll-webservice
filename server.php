@@ -24,32 +24,41 @@ require_once("OLS_class_lib/webServiceServer_class.php");
 require_once("OLS_class_lib/oci_class.php");
 
 class openNumberRoll extends webServiceServer {
+private $roll_name;
 
     public function numberRoll($param) {
         if (!$this->aaa->has_right("opennumberroll", 500)) {
             $res->error->_value = "authentication_error";
         } 
         else {
+          $this->roll_name = $param->numberRollName->_value;
           $valid_rolls = $this->config->get_value("valid_number_roll","setup");
-          if (in_array($param->numberRollName->_value, $valid_rolls)) {
+          if (in_array($this->roll_name, $valid_rolls)) {
 // hack for creating test faust numbers until final scheme is found
-              if ('faust' == $param->numberRollName->_value) {
+              if (self::is_faust($this->roll_name)) {
                 $ret->numberRollResponse->_value = self::create_test_faust();
                 return $ret;
               }
-              for ($i = 1; ($i <= 2) && !is_object($oci); $i++) {
+              define('CONNECT_LOOPS', 2); // should be 1, but history tells otherwise
+              for ($i = 1; ($i <= CONNECT_LOOPS) && !is_object($oci); $i++) {
                 $oci = self::get_oci_connection($this->config->get_value("numberroll_credentials","setup"), $i);
               }
               if (!is_object($oci)) {
                 $res->error->_value = "error_reaching_database";
               }
               else {
-                if ($next_val = self::get_next_val($oci, $param->numberRollName->_value)) {
-                  $res->rollNumber->_value = self::create_sideeffect($next_val, $param->numberRollName->_value);
-                }
-                else {
-                  $res->error->_value = "error_creating_number_roll";
+                do {
+                  if ($next_val = self::get_next_val($oci, $this->roll_name)) {
+                    if (self::is_faust($this->roll_name)) {
+                      $next_val = self::modify_faust_next_val($next_val);
+                    }
+                    $res->rollNumber->_value = $next_val;
+                  }
+                  else {
+                    $res->error->_value = "error_creating_number_roll";
+                  } 
                 } 
+                while (empty($res->rollNumber->_value) && (empty($res->error->_value)));
               }
           }
           else {
@@ -64,6 +73,10 @@ class openNumberRoll extends webServiceServer {
 
     }
 
+    private function is_faust($name) {
+      return $name == 'faust';
+    }
+
     private function create_test_faust() {
       do {
         $stem = strval(rand(1000000, 8999999));
@@ -71,7 +84,15 @@ class openNumberRoll extends webServiceServer {
       }
       while (!is_int($check));
       return $stem . strval($check);
-      
+    }
+
+    private function modify_faust_next_val($next_val) {
+      if ($check = self::calculate_check($next_val)) {
+        return $next_val . $check;
+      }
+      else {
+        return NULL;
+      }
     }
 
     private function calculate_check($str) {
@@ -82,17 +103,6 @@ class openNumberRoll extends webServiceServer {
       }
       $chk = 11 - ($sum % 11);
       return ($chk < 10 ? $chk : FALSE);
-    }
-
-    private function create_side_effect($number, $roll_name) {
-      switch ($roll_name) {
-        case 'faust':
-          return $number;
-          break;
-        default:
-          return $number;
-          break;
-      }
     }
 
     private function get_next_val($oci, $roll_name) {
