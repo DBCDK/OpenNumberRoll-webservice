@@ -96,10 +96,10 @@ private $roll_name;
     }
 
     private function calculate_check($str) {
-      $vgt = '765432765432765432';
+      $wgt = '765432765432765432';
       $str18 = sprintf('%018s', $str);
       for ($i = strlen($str18); $i; $i--) {
-        $sum += intval($str18[$i - 1]) * intval($vgt[$i - 1]);
+        $sum += intval($str18[$i - 1]) * intval($wgt[$i - 1]);
       }
       $chk = 11 - ($sum % 11);
       return ($chk < 10 ? $chk : FALSE);
