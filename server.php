@@ -36,7 +36,7 @@ private $roll_name;
           if (in_array($this->roll_name, $valid_rolls)) {
 // hack for creating test faust numbers until final scheme is found
               if (self::is_faust($this->roll_name)) {
-                $ret->numberRollResponse->_value = self::create_test_faust();
+                $ret->numberRollResponse->_value->rollNumber->_value = self::create_test_faust();
                 return $ret;
               }
               define('CONNECT_LOOPS', 2); // should be 1, but history tells otherwise
