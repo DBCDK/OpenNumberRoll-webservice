@@ -27,25 +27,24 @@ class openNumberRoll extends webServiceServer {
   private $roll_name;
 
   public function numberRoll($param) {
-    if (!$this->aaa->has_right("opennumberroll", 500)) {
-      $res->error->_value = "authentication_error";
+    if (!$this->aaa->has_right('opennumberroll', 500)) {
+      $res->error->_value = 'authentication_error';
     } 
     else {
       $this->roll_name = $param->numberRollName->_value;
-      $valid_rolls = $this->config->get_value("valid_number_roll","setup");
+      $valid_rolls = $this->config->get_value('valid_number_roll','setup');
       if (in_array($this->roll_name, $valid_rolls)) {
         // hack for creating test faust numbers until final scheme is found
-        /*
-           if (self::is_faust($this->roll_name)) {
-           $ret->numberRollResponse->_value->rollNumber->_value = self::create_test_faust();
-           return $ret;
-           }
-         */
-        $pg = self::get_pg_connection($this->config->get_value("numberroll_credentials","setup"));
+        if (self::is_faust($this->roll_name)) {
+          $ret->numberRollResponse->_value->rollNumber->_value = self::create_test_faust();
+          return $ret;
+        }
+        $pg = self::get_pg_connection($this->config->get_value('numberroll_credentials','setup'));
         if (!is_object($pg)) {
-          $res->error->_value = "error_reaching_database";
+          $res->error->_value = 'error_reaching_database';
         }
         else {
+          // Because we are using modulo 11 in calculating check value for faust, we have to loop past some numbers.
           do {
             if ($next_val = self::get_next_val($pg, $this->roll_name)) {
               if (self::is_faust($this->roll_name)) {
@@ -54,14 +53,16 @@ class openNumberRoll extends webServiceServer {
               $res->rollNumber->_value = $next_val;
             }
             else {
-              $res->error->_value = "error_creating_number_roll";
+              // Normally there should be a verbose::log(FATAL, ...) here but that is done in get_next_val
+              $res->error->_value = 'error_drawing_roll_number';
             } 
           } 
           while (empty($res->rollNumber->_value) && (empty($res->error->_value)));
         }
       }
       else {
-        $res->error->_value = "unknown_number_roll_name";
+        verbose::log(WARNING, 'OpenNumberRoll:: Attempt to draw numbers from unknown roll <' . $this->roll_name . '>');
+        $res->error->_value = 'unknown_number_roll_name';
       }
     }
 
@@ -107,18 +108,19 @@ class openNumberRoll extends webServiceServer {
   private function get_next_val($pg, $roll_name) {
     $this->watch->start('nextval');
     try {
-
-      $pg->set_query("SELECT " . $roll_name . ".nextval FROM dual");
-      $val = $pg->fetch_into_assoc();
-      if (empty($val["NEXTVAL"])) {
-        verbose::log(FATAL, "OpenNumberRoll:: Got no number?? error: " . $pg->get_error_string());
-        $ret = FALSE;
+      $sql = 'SELECT nextval(:b_rollname)';
+      $pg->bind('b_rollname', $roll_name );
+      $pg->set_query( $sql );
+      $pg->execute();
+      if ( $pg->num_rows() > 0 ) {
+        $row = $pg->get_row();
+        $ret = $row['nextval'];
       } else {
-        verbose::log(TRACE, "OpenNumberRoll:: " . $roll_name . " returned number: " . $val["NEXTVAL"]);
-        $ret = $val["NEXTVAL"];
+        verbose::log(FATAL, 'OpenNumberRoll:: Got no number?? - this should be impossible');
+        $ret = FALSE;
       }
-    } catch (ociException $e) {
-      verbose::log(FATAL, "OpenNumberRoll:: OCI select error: " . $pg->get_error_string());
+    } catch (Exception $e) {
+      verbose::log(FATAL, 'OpenNumberRoll:: Postgres select error: ' . $e->__toString());
       $ret = FALSE;
     }
     $this->watch->stop('nextval');
@@ -132,7 +134,6 @@ class openNumberRoll extends webServiceServer {
       return $pg;
     }
     catch (Exception $e) {
-      // verbose::log(FATAL, 'OpenNumberRoll:: Postgres connect error Could not connect to database with <' . $credentials . '>: ' . $e->__toString());
       verbose::log(FATAL, 'OpenNumberRoll:: ' . $e->__toString());
     }
     return FALSE;
