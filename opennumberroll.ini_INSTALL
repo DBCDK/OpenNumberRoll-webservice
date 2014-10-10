@@ -45,8 +45,8 @@ verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950
 ; format for automatic timer dump %s is the soap-action used
 dump_timer = opennumberroll(%s)
 
-; OCI credentials
-numberroll_credentials = user/password@myoracle.server.dk
+; Postgres credentials
+numberroll_credentials = host=pg.server.somewhere user=this password=that
 
 ; valid number rolls
 valid_number_roll[] = my_number_roll
