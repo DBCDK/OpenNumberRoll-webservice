@@ -25,44 +25,49 @@ require_once("OLS_class_lib/pg_database_class.php");
 
 class openNumberRoll extends webServiceServer {
   private $roll_name;
+  private $roll_sequence;
 
   public function numberRoll($param) {
-    if (!$this->aaa->has_right('opennumberroll', 500)) {
-      $res->error->_value = 'authentication_error';
+    if (!$this->aaa->has_right("opennumberroll", 500)) {
+      $res->error->_value = "authentication_error";
     } 
     else {
       $this->roll_name = $param->numberRollName->_value;
-      $valid_rolls = $this->config->get_value('valid_number_roll','setup');
-      if (in_array($this->roll_name, $valid_rolls)) {
+      $valid_rolls = self::set_valid_rolls($this->config->get_value("valid_number_roll","setup"));
+      if (($roll_sequence = array_search($this->roll_name, $valid_rolls)) !== FALSE) {
+        if (self::is_faust_8($this->roll_name)) {
+          $ret->numberRollResponse->_value->rollNumber->_value = self::create_faust_8($roll_sequence);
+          return $ret;
+        }
         // hack for creating test faust numbers until final scheme is found
         if (self::is_faust($this->roll_name)) {
           $ret->numberRollResponse->_value->rollNumber->_value = self::create_test_faust();
           return $ret;
         }
-        $pg = self::get_pg_connection($this->config->get_value('numberroll_credentials','setup'));
-        if (!is_object($pg)) {
-          $res->error->_value = 'error_reaching_database';
+        define('CONNECT_LOOPS', 2); // should be 1, but history tells otherwise
+        for ($i = 1; ($i <= CONNECT_LOOPS) && !is_object($oci); $i++) {
+          $oci = self::get_oci_connection($this->config->get_value("numberroll_credentials","setup"), $i);
+        }
+        if (!is_object($oci)) {
+          $res->error->_value = "error_reaching_database";
         }
         else {
-          // Because we are using modulo 11 in calculating check value for faust, we have to loop past some numbers.
           do {
-            if ($next_val = self::get_next_val($pg, $this->roll_name)) {
+            if ($next_val = self::get_next_val($oci, $this->roll_sequence)) {
               if (self::is_faust($this->roll_name)) {
                 $next_val = self::modify_faust_next_val($next_val);
               }
               $res->rollNumber->_value = $next_val;
             }
             else {
-              // Normally there should be a verbose::log(FATAL, ...) here but that is done in get_next_val
-              $res->error->_value = 'error_drawing_roll_number';
+              $res->error->_value = "error_creating_number_roll";
             } 
           } 
           while (empty($res->rollNumber->_value) && (empty($res->error->_value)));
         }
       }
       else {
-        verbose::log(WARNING, 'OpenNumberRoll:: Attempt to draw numbers from unknown roll <' . $this->roll_name . '>');
-        $res->error->_value = 'unknown_number_roll_name';
+        $res->error->_value = "unknown_number_roll_name";
       }
     }
 
@@ -73,8 +78,90 @@ class openNumberRoll extends webServiceServer {
 
   }
 
+  private function set_valid_rolls($arr) {
+    $ret = array();
+    foreach ($arr as $idx => $val) {
+      if (is_numeric($idx)) {
+        $ret[$val] = $val;
+      }
+      else {
+        $ret[$idx] = $val;
+      }
+    }
+    return $ret;
+  }
+
   private function is_faust($name) {
     return $name == 'faust';
+  }
+
+  private function is_faust_8($name) {
+    return $name == 'faust_8';
+  }
+
+  private function create_faust_8($roll_sequence) {
+    $oci = self::get_oci_connection($this->config->get_value("faust_8_credentials","setup"));
+    if (!is_object($oci)) {
+      $res->error->_value = "error_reaching_database";
+    }
+    else {
+      if (!$res = self::get_next_faust_8($oci, $roll_sequence)) {
+        $res->error->_value = "error_creating_number_roll";
+      }
+    }
+    $ret->numberRollResponse->_value = $res;
+    return $ret;
+  }
+
+  private function get_next_faust_8($oci, $roll_sequence) {
+    $this->watch->start('faust_8');
+    try {
+      $oci->bind('bind_rulle_navn', $roll_sequence);
+      $oci->set_query('SELECT * FROM nummer_ruller WHERE rulle_navn = :bind_rulle_navn FOR UPDATE');
+      $val = $oci->fetch_into_assoc();
+      if (self::from_space_number($val['AKTUEL']) < self::from_space_number($val['STARTING'])) {
+        $next = self::from_space_number($val['STARTING']);
+      }
+      else {
+        $next = self::from_space_number($val['AKTUEL']);
+      }
+      $next = self::calc_next($next);
+      if ($next > intval(preg_replace('/\D/', '', $val['SLUT']))) {
+        verbose::log(FATAL, 'OpenNumberRoll:: Exceeded number_roll: ' . $roll_sequence);
+        $ret = FALSE;
+      } else {
+        $oci->bind('bind_rulle_navn', $roll_sequence);
+        $oci->bind('bind_aktuel', self::to_space_number($next));
+        $oci->set_query('UPDATE nummer_ruller SET aktuel = :bind_aktuel WHERE rulle_navn = :bind_rulle_navn');
+        $val = $oci->get_num_rows();
+        verbose::log(TRACE, 'OpenNumberRoll:: ' . $roll_sequence . ' returned number: ' . $next);
+        $ret = $next;
+        $oci->commit();
+      }
+    } catch (ociException $e) {
+      verbose::log(FATAL, "OpenNumberRoll:: OCI select error: " . $oci->get_error_string());
+      $ret = FALSE;
+      $oci->rollback();
+    }
+    $this->watch->stop('faust_8');
+    return $ret;
+  }
+
+  private function from_space_number($str) {
+    return intval(substr(preg_replace('/\D/', '', $str), 0, 7));
+  }
+
+  private function to_space_number($str) {
+    return substr($str, 0, 1) . ' ' . substr($str, 1, 3) . ' ' . substr($str, 4, 3) . ' ' . substr($str, 7, 1);
+  }
+
+  private function calc_next($stem) {
+    do {
+      $stem++;
+      $check = self::calculate_check($stem);
+    }
+    while (!is_int($check));
+    return $stem . strval($check);
   }
 
   private function create_test_faust() {
@@ -105,36 +192,36 @@ class openNumberRoll extends webServiceServer {
     return ($chk < 10 ? $chk : FALSE);
   }
 
-  private function get_next_val($pg, $roll_name) {
+  private function get_next_val($oci, $roll_sequence) {
     $this->watch->start('nextval');
     try {
-      $sql = 'SELECT nextval(:b_rollname)';
-      $pg->bind('b_rollname', $roll_name );
-      $pg->set_query( $sql );
-      $pg->execute();
-      if ( $pg->num_rows() > 0 ) {
-        $row = $pg->get_row();
-        $ret = $row['nextval'];
-      } else {
-        verbose::log(FATAL, 'OpenNumberRoll:: Got no number?? - this should be impossible');
+      $oci->set_query("SELECT " . $roll_sequence . ".nextval FROM dual");
+      $val = $oci->fetch_into_assoc();
+      if (empty($val["NEXTVAL"])) {
+        verbose::log(FATAL, "OpenNumberRoll:: Got no number?? error: " . $oci->get_error_string());
         $ret = FALSE;
+      } else {
+        verbose::log(TRACE, "OpenNumberRoll:: " . $roll_sequence . " returned number: " . $val["NEXTVAL"]);
+        $ret = $val["NEXTVAL"];
       }
-    } catch (Exception $e) {
-      verbose::log(FATAL, 'OpenNumberRoll:: Postgres select error: ' . $e->__toString());
+    } catch (ociException $e) {
+      verbose::log(FATAL, "OpenNumberRoll:: OCI select error: " . $oci->get_error_string());
       $ret = FALSE;
     }
     $this->watch->stop('nextval');
     return $ret;
   }
 
-  private function get_pg_connection($credentials) {
-    $pg = new pg_database($credentials);
+  private function get_oci_connection($credentials, $attempt = 1) {
+    $oci = new Oci($credentials);
+    $oci->set_charset("UTF8");
+    $this->watch->start('connect-' . $attempt);
     try {
-      $pg->open();
-      return $pg;
+      $oci->connect();
+      return $oci;
     }
-    catch (Exception $e) {
-      verbose::log(FATAL, 'OpenNumberRoll:: ' . $e->__toString());
+    catch (ociException $e) {
+      verbose::log(FATAL, 'OpenNumberRoll:: OCI connect error #' . $attempt . ': ' . $oci->get_error_string());
     }
     return FALSE;
   }
