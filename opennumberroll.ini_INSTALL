@@ -49,6 +49,14 @@ dump_timer = opennumberroll(%s)
 numberroll_credentials = host=pg.server.somewhere user=this password=that
 
 ; valid number rolls
+; valid_number_roll[internal_number_roll_name] = service_number_roll_name
+; internal_number_roll_name defines the internal name of the db-sequence to use
+; If internal_number_roll_name is blank, service_number_roll_name is used
+; External names faust and faust_8 are special and will produce a faust-number with a check-digit
+; - faust_8 will produce a 8 character faust from the "old" list, and faust, will produce a 9 character faust
+; faust number_roll adds some business logic to the number_roll
+;valid_number_roll[FAUST_TEST] = faust_8
+
 valid_number_roll[] = my_number_roll
 
 
