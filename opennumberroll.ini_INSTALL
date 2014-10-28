@@ -1,16 +1,24 @@
 ; inifie for opennumberroll
 
 [setup]
-version = 0.3
+; To close a service, set service_http_error
+; service status - values:
+;service_http_error = HTTP/1.0 404 Not Found
+;service_http_error = HTTP/1.1 410 Gone
+;service_http_error = HTTP/1.0 503 Service Unavailable
+
+version = 1.0
 
 ; wsdl for service
 wsdl = opennumberroll.wsdl
 
 ; in_house_domain may use ?ShowInfo and use create_sample form
 ;in_house_domain = .dbc.dk
+in_house_domain = @MY_DOMAIN@
 
 ; set to TRUE to expose the create_sample form
 ;show_samples = 1
+;show_samples_ip_list = 127.0.0.1-127.0.0.2
 
 ; validate
 ;validate[soap_request] = soap.xsd
@@ -40,24 +48,44 @@ logfile = /tmp/opennumberroll.log
 ;   DEBUG   - debugging info
 ;   Z3959   - calls to z3950 services
 ;   OCI     - oracle
-verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950
+;verbose = WARNING+ERROR+FATAL+STAT+TIMER+TRACE+DEBUG+Z3950
+verbose = @VERBOSE_LEVEL@
 
 ; format for automatic timer dump %s is the soap-action used
 dump_timer = opennumberroll(%s)
 
-; Postgres credentials
-numberroll_credentials = host=pg.server.somewhere user=this password=that
+; DB credentials
+; OCI numberroll_credentials = ora_user/ora_password@oradb.myserver.dk
+numberroll_credentials = @OCI_NUMBERROLL_CREDENTIALS@
+; PG numberroll credentials
+; pg_numberroll_credentials = host=my.server.dk port=5432 dbname= user=someuser password=somepassword
+pg_numberroll_credentials = @PG_NUMBERROLL_CREDENTIALS@
+
+; 8 digit faust credentials
+; faust_8_credentials = ora_user/ora_password@oradb.myserver.dk
+faust_8_credentials = @DB_FAUST_8_CREDENTIALS@
+
 
 ; valid number rolls
 ; valid_number_roll[internal_number_roll_name] = service_number_roll_name
 ; internal_number_roll_name defines the internal name of the db-sequence to use
 ; If internal_number_roll_name is blank, service_number_roll_name is used
-; External names faust and faust_8 are special and will produce a faust-number with a check-digit
-; - faust_8 will produce a 8 character faust from the "old" list, and faust, will produce a 9 character faust
-; faust number_roll adds some business logic to the number_roll
+; External names faust, faust_test and faust_8 are special and will produce a faust-number with a check-digit
+; - faust_8 will produce a 8 character faust from the "old" list
+; - faust_test will produce a random at least 9-digit faustnumber for test purposes
+; - faust, will produce a unique at least 9 digit faust
+;valid_number_roll[] = faust
 ;valid_number_roll[FAUST_TEST] = faust_8
+;valid_number_roll[] = orderid_numberroll
+;valid_number_roll[] = ors_task_taskid_seq
+;valid_number_roll[] = my_number_roll
+;valid_number_roll[] = pg_test
 
-valid_number_roll[] = my_number_roll
+valid_number_roll[] = faust_test
+
+; pg numberrolls - these will use postgress sequences
+;pg_number_roll[] = pg_test
+;pg_number_roll[] = faust
 
 
 [aaa]
@@ -72,6 +100,8 @@ valid_number_roll[] = my_number_roll
 ;
 ;aaa_ip_rights[dbc][ip_list] = 172.16.0.0-172.31.255.255;193.111.162.0-193.111.162.255
 ;aaa_ip_rights[dbc][ressource][opennumberroll] = 500
+;
+@AAA_IP_RIGHTS_BLOCK@
 ;
 ; if not found in aaa_ip_rights the authentication object is created from the FORS
 ; either by using the WS specified by aaa_fors_rights or by OCI specified by aaa_credentials
@@ -110,6 +140,25 @@ valid_number_roll[] = my_number_roll
 action[numberRoll][] = numberRollName
 action[numberRoll][] = outputType
 action[numberRoll][] = callback
+
+
+[showinfo]
+; section to dump setting online
+; make one or more line to display if ?ShowInfo is part of the url
+; __var__ will be replace by the corresponding ini-file setting - if it exists
+; __var.section__ will be replace by the corresponding ini-file setting from section [section]
+; this will only work if the user from in_house_domain - see above
+showinfo[] = <pre>
+showinfo[] = version:                   __version.setup__
+showinfo[] = logfile:                   __logfile.setup__
+showinfo[] = verbose:                   __verbose__
+showinfo[] = numberroll_credentials:    __numberroll_credentials__
+showinfo[] = faust_8_credentials:       __faust_8_credentials__
+showinfo[] = pg_numberroll_credentials: __pg_numberroll_credentials__
+showinfo[] = valid_number_roll:         __valid_number_roll__
+showinfo[] = pg_number_roll:            __pg_number_roll__
+showinfo[] = aaa_credentials:           __aaa_credentials__
+showinfo[] = </pre>
 
 
 [howru]
