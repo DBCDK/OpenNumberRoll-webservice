@@ -23,6 +23,7 @@ You should have received a copy of the GNU Affero General Public License along w
 				<xs:element ref="nrs:numberRollName"/>
 				<xs:element ref="nrs:callback" minOccurs="0"/>
 				<xs:element ref="nrs:outputType" minOccurs="0"/>
+        <xs:element ref="nrs:trackingId" minOccurs="0"/>
 			</xs:sequence>
 		</xs:complexType>
 	</xs:element>
@@ -74,6 +75,11 @@ You should have received a copy of the GNU Affero General Public License along w
 			<xs:documentation xml:lang="en">User identifier (for authentication purposes)</xs:documentation>
 		</xs:annotation>
 	</xs:element>
+  <xs:element name="trackingId" type="xs:string">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">Unique id to track this request</xs:documentation>
+    </xs:annotation>
+  </xs:element>
 	<xs:element name="callback" type="xs:string">
 		<xs:annotation>
 			<xs:documentation xml:lang="en">If outputType=json.</xs:documentation>
