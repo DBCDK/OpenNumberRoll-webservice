@@ -20,9 +20,10 @@
  */
 
 
-/** \brief
- * 
+/** \brief Service that provider different number rolls. 
+ * Sequences from oracle or postgress and speciel number rolls like faust with business logic attached to the numbers
  *
+ * Valid number rolls and their type are defined in the ini-file
  */
 require_once('OLS_class_lib/webServiceServer_class.php');
 require_once('OLS_class_lib/pg_database_class.php');
@@ -31,6 +32,10 @@ class openNumberRoll extends webServiceServer {
   private $roll_name;
   private $roll_sequence;
 
+  /** \brief - 
+   * @param object $param - the users request
+   * @retval object - answer as object
+   */
   public function numberRoll($param) {
     if (!$this->aaa->has_right('opennumberroll', 500)) {
       $res->error->_value = 'authentication_error';
@@ -75,6 +80,10 @@ class openNumberRoll extends webServiceServer {
 
   }
 
+  /** \brief - replace numeric keys with the content of the index
+   * @param array $arr -
+   * @retval array - 
+   */
   private function set_valid_rolls($arr) {
     $ret = array();
     foreach ($arr as $idx => $val) {
@@ -88,18 +97,34 @@ class openNumberRoll extends webServiceServer {
     return $ret;
   }
 
+  /** \brief - return TRUE if 'faust'
+   * @param string $name -
+   * @retval boolean - 
+   */
   private function is_faust($name) {
     return $name == 'faust';
   }
 
+  /** \brief - return TRUE if 'faust_test'
+   * @param string $name -
+   * @retval boolean - 
+   */
   private function is_faust_test($name) {
     return $name == 'faust_test';
   }
 
+  /** \brief - return TRUE if 'faust_8'
+   * @param string $name -
+   * @retval boolean - 
+   */
   private function is_faust_8($name) {
     return $name == 'faust_8';
   }
 
+  /** \brief - get the next faust number 
+   * @param object $roll_sequence -
+   * @retval object - the created 8 digit faust number - or an error
+   */
   private function create_faust_8($roll_sequence) {
     $oci = self::get_oci_connection($this->config->get_value('faust_8_credentials','setup'));
     if (!is_object($oci)) {
@@ -114,6 +139,11 @@ class openNumberRoll extends webServiceServer {
     return $ret;
   }
 
+  /** \brief - produce a valid 8 digit faust number from the sequence in "old style"
+   * @param resource $oci - the oracle connection
+   * @param object $roll_sequence - name of the oracle column to use
+   * @retval mixed - the created 8 digit faust number - or FALSE
+   */
   private function get_next_faust_8($oci, $roll_sequence) {
     $this->watch->start('faust_8');
     try {
@@ -148,14 +178,26 @@ class openNumberRoll extends webServiceServer {
     return $ret;
   }
 
+  /** \brief - remove non digits and return the first 7 digits of the number
+   * @param string $str -
+   * @retval string
+   */
   private function from_space_number($str) {
     return intval(substr(preg_replace('/\D/', '', $str), 0, 7));
   }
 
+  /** \brief - insert spaces into a faustnumber, to make it the "old style"
+   * @param string $str -
+   * @retval string - 
+   */
   private function to_space_number($str) {
     return substr($str, 0, 1) . ' ' . substr($str, 1, 3) . ' ' . substr($str, 4, 3) . ' ' . substr($str, 7, 1);
   }
 
+  /** \brief - create the next valid number and checkdigit
+   * @param string $stem -
+   * @retval string - 
+   */
   private function calc_next($stem) {
     do {
       $stem++;
@@ -165,6 +207,9 @@ class openNumberRoll extends webServiceServer {
     return $stem . strval($check);
   }
 
+  /** \brief - create a random 9 digit number with faust checkdigit
+   * @retval string - 
+   */
   private function create_random_faust() {
     do {
       $stem = strval(rand(10000000, 89999999));
@@ -174,6 +219,10 @@ class openNumberRoll extends webServiceServer {
     return $stem . strval($check);
   }
 
+  /** \brief - add a check digit to a number
+     @param string $next_val -
+   * @retval mixed - $next_val and check digit or NULL if no check digit can be made from the number 
+   */
   private function modify_faust_next_val($next_val) {
     if ($check = self::calculate_check($next_val)) {
       return $next_val . $check;
@@ -183,6 +232,10 @@ class openNumberRoll extends webServiceServer {
     }
   }
 
+  /** \brief - Calculates the check digit
+   * @param string $str -
+   * @retval mixed - chekc digit or FALSE
+   */
   private function calculate_check($str) {
     $wgt = '765432765432765432';
     $str18 = sprintf('%018s', $str);
@@ -193,6 +246,11 @@ class openNumberRoll extends webServiceServer {
     return ($chk < 10 ? $chk : FALSE);
   }
 
+  /** \brief - get next sequence from oracle or postgress
+   * @param string $roll_sequence - name of number sequence
+   * @param boolean $is_pg - is postgress sequence
+   * @retval mixed - next number or FALSE
+   */
   private function get_next_val($roll_sequence, $is_pg) {
     $this->watch->start('nextval');
     if ($is_pg) {
@@ -205,6 +263,10 @@ class openNumberRoll extends webServiceServer {
     return $ret;
   }
 
+  /** \brief - get next sequence from postgress
+   * @param string $roll_sequence - name of number sequence
+   * @retval mixed - next number or FALSE
+   */
   private function pg_get_next_val($roll_sequence) {
     static $db;
     $ret = FALSE;
@@ -229,6 +291,10 @@ class openNumberRoll extends webServiceServer {
     return $ret;;
   }
 
+  /** \brief - get next sequence from oracle
+   * @param string $roll_sequence - name of number sequence
+   * @retval mixed - next number or FALSE
+   */
   private function oci_get_next_val($roll_sequence) {
     static $db;
     $ret = FALSE;
@@ -254,6 +320,10 @@ class openNumberRoll extends webServiceServer {
     return $ret;
   }
 
+  /** \brief - creates a postgress connection
+   * @param string $credentials -
+   * @retval resource - 
+   */
   private function get_pg_connection($credentials) {
     $pg = new Pg_database($credentials . ' connect_timeout=1');
     $this->watch->start('connect_pg');
@@ -266,6 +336,10 @@ class openNumberRoll extends webServiceServer {
     return FALSE;
   }
 
+  /** \brief - creates an oracle connection
+   * @param string $credentials -
+   * @retval resource - 
+   */
   private function get_oci_connection($credentials, $attempt = 1) {
     $oci = new Oci($credentials);
     $oci->set_charset('UTF8');
