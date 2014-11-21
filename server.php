@@ -46,7 +46,7 @@ class openNumberRoll extends webServiceServer {
       $is_pg_roll = in_array($this->roll_name, $this->config->get_value('pg_number_roll','setup'));
       if (($roll_sequence = array_search($this->roll_name, $valid_rolls)) !== FALSE) {
         if (self::is_faust_8($this->roll_name)) {
-          $ret->numberRollResponse->_value->rollNumber->_value = self::create_faust_8($roll_sequence);
+          $ret->numberRollResponse->_value = self::create_faust_8($roll_sequence);
           return $ret;
         }
         // test faust numbers 
@@ -128,14 +128,16 @@ class openNumberRoll extends webServiceServer {
   private function create_faust_8($roll_sequence) {
     $oci = self::get_oci_connection($this->config->get_value('faust_8_credentials','setup'));
     if (!is_object($oci)) {
-      $res->error->_value = 'error_reaching_database';
+      $ret->error->_value = 'error_reaching_database';
     }
     else {
-      if (!$res = self::get_next_faust_8($oci, $roll_sequence)) {
-        $res->error->_value = 'error_creating_number_roll';
+      if ($number = self::get_next_faust_8($oci, $roll_sequence)) {
+        $ret->rollNumber->_value = $number;
       }
+      else {
+        $ret->error->_value = 'error_creating_number_roll';
+      } 
     }
-    $ret->numberRollResponse->_value = $res;
     return $ret;
   }
 
