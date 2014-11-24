@@ -51,7 +51,11 @@ class openNumberRoll extends webServiceServer {
         }
         // test faust numbers 
         if (self::is_faust_test($this->roll_name)) {
-          $ret->numberRollResponse->_value->rollNumber->_value = self::create_random_faust();
+          $ret->numberRollResponse->_value->rollNumber->_value = self::create_random_faust(9);
+          return $ret;
+        }
+        if (self::is_faust_8_test($this->roll_name)) {
+          $ret->numberRollResponse->_value->rollNumber->_value = self::create_random_faust(8);
           return $ret;
         }
         define('OCI_CONNECT_LOOPS', 2); // should be 1, but history tells otherwise
@@ -119,6 +123,14 @@ class openNumberRoll extends webServiceServer {
    */
   private function is_faust_8($name) {
     return $name == 'faust_8';
+  }
+
+  /** \brief - return TRUE if 'faust_8_test'
+   * @param string $name -
+   * @retval boolean - 
+   */
+  private function is_faust_8_test($name) {
+    return $name == 'faust_8_test';
   }
 
   /** \brief - get the next faust number 
@@ -209,12 +221,14 @@ class openNumberRoll extends webServiceServer {
     return $stem . strval($check);
   }
 
-  /** \brief - create a random 9 digit number with faust checkdigit
+  /** \brief - create a random $len digit number with faust checkdigit
    * @retval string - 
    */
-  private function create_random_faust() {
+  private function create_random_faust($len) {
+    $min = pow(10, ($len - 2));
+    $max = pow(10, ($len - 1)) - 1;
     do {
-      $stem = strval(rand(10000000, 89999999));
+      $stem = strval(rand($min, $max));
       $check = self::calculate_check($stem);
     }
     while (!is_int($check));

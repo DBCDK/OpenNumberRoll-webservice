@@ -70,9 +70,10 @@ faust_8_credentials = @DB_FAUST_8_CREDENTIALS@
 ; valid_number_roll[internal_number_roll_name] = service_number_roll_name
 ; internal_number_roll_name defines the internal name of the db-sequence to use
 ; If internal_number_roll_name is blank, service_number_roll_name is used
-; service_number_roll_name: faust, faust_test and faust_8 are special and will produce a faust-number with a check-digit
+; service_number_roll_name: faust, faust_test, faust_8 and faust_8_test are special and will produce a faust-number with a check-digit
 ; - faust_8 will produce a 8 character faust from the "old" list
-; - faust_test will produce a random at least 9-digit faustnumber for test purposes
+; - faust_8 test will produce a random 8-digit faustnumber for test purposes
+; - faust_test will produce a random 9-digit faustnumber for test purposes
 ; - faust, will produce a unique at least 9 digit faust
 ;valid_number_roll[] = faust
 ;valid_number_roll[FAUST_TEST] = faust_8
@@ -82,6 +83,7 @@ faust_8_credentials = @DB_FAUST_8_CREDENTIALS@
 ;valid_number_roll[] = my_number_roll
 ;valid_number_roll[] = pg_test
 
+valid_number_roll[] = faust_8_test
 valid_number_roll[] = faust_test
 
 ; pg numberrolls - these will use postgress sequences
